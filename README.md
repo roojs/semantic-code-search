@@ -1,196 +1,190 @@
 # Semantic Code Search
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/sturdy-dev/semantic-code-search/main/docs/readme-banner.png">
-</p>
-<p align='center'>
-  Search your codebase with natural language. No data leaves your computer.
-</p>
-<p align='center'>
-    <a href="https://github.com/sturdy-dev/semantic-code-search/blob/main/LICENSE.txt">
-        <img alt="GitHub"
-        src="https://img.shields.io/github/license/sturdy-dev/semantic-code-search">
-    </a>
-    <a href="https://pypi.org/project/semantic-code-search">
-     <img alt="PyPi"
- src="https://img.shields.io/pypi/v/semantic-code-search">
-    </a>
-</p>
-<p align="center">
-  <a href="#overview">🔍 Overview</a> •
-  <a href="#installation">🔧 Installation</a> •
-  <a href="#usage">💻 Usage</a> •
-  <a href="#command-line-flags">📖 Docs</a> •
-  <a href="#how-it-works">🧠 How it works</a>
-</p>
+> Originally based on [semantic-code-search](https://github.com/sturdy-dev/semantic-code-search)
 
---------------------------------------------------------------------
+A command-line tool for searching codebases using natural language queries. This tool uses machine learning embeddings to find semantically similar code functions and methods based on natural language descriptions.
 
-## Overview
+## About This Fork
 
-`sem` is a command line application which allows you to search your git repository using natural language. For example you can query for:
+This version has been refactored to use the **tree-sitter CLI** instead of Python bindings, making it easier to deploy and avoiding issues with tree-sitter Python package builds. The tool now accepts tree-sitter parse output files via JSON configuration, making it more flexible and easier to integrate with other tools.
 
-- 'Where are API requests authenticated?'
-- 'Saving user objects to the database'
-- 'Handling of webhook events'
-- 'Where are jobs read from the queue?'
+For more details about semantic code search in general, see [README.old.md](README.old.md) or the [original codebase](https://github.com/sturdy-dev/semantic-code-search).
 
-You will get a (visualized) list of code snippets and their `file:line` locations. You can use `sem` for exploring large codebases or, if you are as forgetfull as I am, even small ones.
+## What This Tool Does
 
-Basic usage:
+`semantic-code-search` allows you to search your codebase using natural language queries instead of exact text matching. For example, you can ask:
 
-```bash
-sem 'my query'
-```
+- "Where are API requests authenticated?"
+- "Saving user objects to the database"
+- "Handling of webhook events"
+- "Where are jobs read from the queue?"
 
-This will present you with a list of code snippets that most closely match your search. You can select one and press  `Return` to open it in your editor of choice.
+The tool uses a transformer-based neural network model to generate embeddings (numerical representations) of code functions and your query, then finds the most semantically similar matches using cosine similarity.
 
-How does this work? In a nutshell, it uses a neural network to generate code embeddings. More info [below](#how-it-works).
+**Key Features:**
+- Natural language code search - no need for exact keyword matching
+- Extracts function and method definitions from source code
+- Generates embeddings using sentence transformers
+- All processing happens locally - no data leaves your computer
+- Outputs results in markdown format for easy consumption
 
-> NB: All processing is done on your hardware and no data is transmitted to the Internet.
+---
 
-## Installation
+# Usage Guide: Using semantic-code-search with tree-sitter CLI
 
-You can install `semantic-code-search` via `pip`.
+This guide explains how to use `semantic-code-search` with the tree-sitter command-line tool.
 
-### Pip (MacOS, Linux, Windows)
+## Prerequisites
+
+1. **Install tree-sitter CLI**:
+   ```bash
+    sudo apt install tree-sitter-cli
+   ```
+
+2. **Install semantic-code-search**:
+   ```bash
+   # Install in development mode (editable install)
+   pip3 install -e .
+   ```
+
+## Quick Start
+
+The easiest way to get started is to use the provided example script:
 
 ```bash
-pip3 install semantic-code-search
+# Run the example script from the repository root
+./example.sh
 ```
 
-## Usage
+This script will:
+1. Generate tree-sitter parse outputs for all Python files in `src/semantic_code_search/`
+2. Create a JSON input file (`build/files.json`) with relative file references
+3. Generate embeddings using `sem embed --input-json build/files.json --database build/semantic.db`
+4. Run an example query and output markdown results
 
-TL;DR:
+All output files (tree-sitter outputs, JSON config, and database) are stored in the `build/` directory.
+
+See `example.sh` for detailed comments explaining each step.
+
+## Manual Workflow
+
+### Step 1: Generate tree-sitter output files
+
+Create a `build/` directory and generate tree-sitter parse outputs for each source file:
 
 ```bash
-cd /my/repo
-sem 'my query'
+mkdir -p build
+
+# Example: Parse a Python file
+tree-sitter parse src/semantic_code_search/cli.py > build/cli.py.tree-sitter
+
+# Parse multiple files
+for file in src/semantic_code_search/*.py; do
+    tree-sitter parse "$file" > "build/$(basename $file).tree-sitter"
+done
 ```
 
-Run `sem --help` to see [all available options](#command-line-flags).
+**Note**: Make sure tree-sitter has the language grammar installed. For Python, you may need:
+```bash
+tree-sitter build
+```
 
-### Searching for code
+### Step 2: Create JSON input file
 
-Inside your repo simply run
+Create a JSON file (e.g., `build/files.json`) that lists all source files and their corresponding tree-sitter output files. Paths are relative to the JSON file's directory:
+
+```json
+{
+  "files": [
+    {
+      "path": "src/semantic_code_search/cli.py",
+      "tree_sitter_file": "build/cli.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/embed.py",
+      "tree_sitter_file": "build/embed.py.tree-sitter"
+    }
+  ],
+  "model_name": "krlvi/sentence-msmarco-bert-base-dot-v5-nlpl-code_search_net",
+  "batch_size": 32
+}
+```
+
+See `Examples/example.json` for a template.
+
+### Step 3: Generate embeddings
+
+Run the embedding command with the JSON input file and database path:
 
 ```bash
-sem 'my query'
+sem embed --input-json build/files.json --database build/semantic.db
 ```
 
-*(quotes can be omitted)*
+This will:
+- Read all source files and tree-sitter outputs specified in the JSON (paths resolved relative to JSON file)
+- Extract function definitions
+- Generate embeddings
+- Save them to the specified database file (`build/semantic.db`)
 
-> Note that you *need to* be  inside a git repository or provide a path to a repo with the `-p` argument.
+**Exit codes**: 0 on success, non-zero on error (error messages go to stderr)
 
-Before you get your *first* search results, two things need to happen:
+**Note**: The `--database` argument is required and specifies where to store/load the embeddings database.
 
-- The app downloads its [model](#model) (~500 MB). This is done only once for the installation.
-- The app generates 'embeddings' of your code. This will be cached in an `.embeddings` file at the root of the repo and is reused in subsequent searches.
+### Step 4: Query the codebase
 
-Depending on the project size, the above can take from a couple of seconds to minutes. Once this is complete, querying is very fast.
+Query the codebase using natural language:
 
-Example output:
-
-```bash session
-foo@bar:~$ cd /my/repo
-foo@bar:~$ sem 'parsing command line args'
-Embeddings not found in /Users/kiril/src/semantic-code-search. Generating embeddings now.
-Embedding 15 functions in 1 batches. This is done once and cached in .embeddings
-Batches: 100%|█████████████████████████████████████████████████████████| 1/1 [00:07<00:00,  7.05s/it]
+```bash
+sem query "authentication logic" --database build/semantic.db
 ```
 
-### Navigating search results
+This will:
+- Load the embeddings database from the specified path
+- Search for code matching your query
+- Output markdown-formatted results to stdout (default behavior)
 
-By default, a list of the top 5 matches are shown, containing :
+**Markdown output format**:
+```markdown
+# Search Results
 
-- Similarity score
-- File path
-- Line number
-- Code snippet
+## Result 1 (score: 0.85)
+**File:** `/path/to/auth.py:42`
 
-You can navigate the list using the `↑` `↓` arrow keys or `vim` bindings. Pressing `return` will open the relevant file at the line of the code snippet in your editor.
-
-> NB: The editor used for opening can be set with the `--editor` argument.
-
-Example results:
-
-![example results](./docs/example-results.png)
-
-### Command line flags
-
-``` bash
-usage: sem [-h] [-p PATH] [-m MODEL] [-d] [-b BS] [-x EXT] [-n N]
-           [-e {vscode,vim}] [-c] [--cluster-max-distance THRESHOLD]
-           [--cluster-min-lines SIZE] [--cluster-min-cluster-size SIZE]
-           [--cluster-ignore-identincal]
-           ...
-
-Search your codebase using natural language
-
-positional arguments:
-  query_text
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -p PATH, --path-to-repo PATH
-                        Path to the root of the git repo to search or embed
-  -m MODEL, --model-name-or-path MODEL
-                        Name or path of the model to use
-  -d, --embed           (Re)create the embeddings index for codebase
-  -b BS, --batch-size BS
-                        Batch size for embeddings generation
-  -x EXT, --file-extension EXT
-                        File extension filter (e.g. "py" will only return
-                        results from Python files)
-  -n N, --n-results N   Number of results to return
-  -e {vscode,vim}, --editor {vscode,vim}
-                        Editor to open selected result in
-  -c, --cluster         Generate clusters of code that is semantically
-                        similar. You can use this to spot near duplicates,
-                        results are simply printed to stdout
-  --cluster-max-distance THRESHOLD
-                        How close functions need to be to one another to be
-                        clustered. Distance 0 means that the code is
-                        identical, smaller values (e.g. 0.2, 0.3) are stricter
-                        and result in fewer matches
-  --cluster-min-lines SIZE
-                        Ignore clusters with code snippets smaller than this
-                        size (lines of code). Use this if you are not
-                        interested in smaller duplications (eg. one liners)
-  --cluster-min-cluster-size SIZE
-                        Ignore clusters smaller than this size. Use this if
-                        you want to find code that is similar and repeated
-                        many times (e.g. >5)
-  --cluster-ignore-identincal
-                        Ignore identical code / exact duplicates (where
-                        distance is 0)
+```python
+def authenticate_user(...):
+    ...
 ```
 
-## How it works
+## Result 2 (score: 0.82)
+**File:** `/path/to/middleware.py:15`
 
-In a nutshell, this application uses a [transformer](https://en.wikipedia.org/wiki/Transformer_(machine_learning_model)) machine learning model to generate embeddings of methods and functions in your codebase. Embeddings are information dense numerical representations of the semantics of the text/code they represent.
+```python
+def check_auth(...):
+    ...
+```
+```
 
-Here is a great blog post by Jay Alammar which explains the concept really nicely:
-> <https://jalammar.github.io/illustrated-word2vec/>
 
-When the app is ran with the `--embed` argument, function and method definitions are first extracted from the source files and then used for sentence embedding. To avoid doing this for every query, the results are compressed and saved in an `.embeddings` file.
+## Example Files
 
-When a query is being processed, embeddings are generated from the query text. This is then used in a 'nearest neighbor' search to discover function or methods with similar embeddings. We are basically comparing the [cosine similarity](https://en.wikipedia.org/wiki/Cosine_similarity) between vectors.
+- `example.sh` - Complete example script with comments showing the full workflow (run from repository root)
+- `Examples/example.json` - Template JSON file showing the expected format with relative paths
 
-### Model
+## Troubleshooting
 
-The application uses [sentence transformer](https://www.sbert.net/) model architecture to produce 'sentence' embeddings for functions and queries. The particular model is [krlvi/sentence-t5-base-nlpl-code_search_net](https://huggingface.co/krlvi/sentence-t5-base-nlpl-code_search_net) which is based of a [SentenceT5-Base](https://github.com/google-research/t5x_retrieval#released-model-checkpoints) checkpoint with 110M parameters and a pooling layer.
+- **"Tree-sitter output file not found"**: Make sure you've generated the `.tree-sitter` files and the paths in your JSON are correct (relative paths are resolved relative to the JSON file's directory)
+- **"No functions found"**: Check that tree-sitter is parsing your files correctly. Try running `tree-sitter parse` manually on a file
+- **"Database not found"**: Make sure you've run `sem embed` first with the `--database` argument, or check that the database path is correct
+- **"Error: --input-json is required for embedding"**: You must provide the `--input-json` argument when generating embeddings
+- **"Error: --database is required"**: The `--database` argument is required for all operations (embed, query, cluster)
 
-It has been further trained on the [code_search_net](https://huggingface.co/datasets/code_search_net) dataset of 'natural language' — 'programming language' pairs with a [MultipleNegativesRanking](https://github.com/UKPLab/sentence-transformers/blob/master/sentence_transformers/losses/MultipleNegativesRankingLoss.py) loss function.
+## Supported Languages
 
-You can experiment with your own sentence transformer models with the `--model` parameter.
+The tool extracts functions from these node types:
+- `function_definition`
+- `method_definition`
+- `function_declaration`
+- `method_declaration`
 
-## Bugs and limitations
+Make sure tree-sitter can parse your language and that these node types exist in the grammar.
 
-- Currently, the `.embeddings` index is not updated when repository files change. As a temporary workaround, `sem embed` can be re-ran occasionally.
-- Supported languages: `{ 'python', 'javascript', 'typescript', 'ruby', 'go', 'rust', 'java', 'c', 'c++', 'kotlin' }`
-- Supported text editors for opening results in: `{ 'vscode', 'vim' }`
-
-## License
-
-Semantic Code Search is distributed under [AGPL-3.0-only](LICENSE.txt). For Apache-2.0 exceptions — <kiril@codeball.ai>

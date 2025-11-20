@@ -6,19 +6,33 @@ This guide explains how to use `semantic-code-search` with the tree-sitter comma
 
 1. **Install tree-sitter CLI**:
    ```bash
-   # Using cargo (recommended)
-   cargo install --locked tree-sitter-cli
-   
-   # Or using npm
-   npm install -g tree-sitter-cli
+    sudo apt install tree-sitter-cli
    ```
 
 2. **Install semantic-code-search**:
    ```bash
-   pip install semantic-code-search
+   # Install in development mode (editable install)
+   pip3 install -e .
    ```
 
-## Workflow
+## Quick Start
+
+The easiest way to get started is to use the provided example script:
+
+```bash
+# Run the example script from the repository root
+./example.sh
+```
+
+This script will:
+1. Generate tree-sitter parse outputs for all Python files in `src/semantic_code_search/`
+2. Create a JSON input file (`Examples/input.json`) with file references
+3. Generate embeddings using `sem embed --input-json`
+4. Run an example query and output markdown results
+
+See `Examples/example.sh` for detailed comments explaining each step.
+
+## Manual Workflow
 
 ### Step 1: Generate tree-sitter output files
 
@@ -61,14 +75,14 @@ Create a JSON file (e.g., `input.json`) that lists all source files and their co
 }
 ```
 
-See `example.json` for a template.
+See `Examples/example.json` for a template.
 
 ### Step 3: Generate embeddings
 
 Run the embedding command with the JSON input file:
 
 ```bash
-sem embed --input-json input.json
+sem embed --input-json Examples/input.json
 ```
 
 This will:
@@ -113,36 +127,11 @@ def check_auth(...):
 ```
 ```
 
-## Complete Example
 
-Here's a complete example using files in the current directory:
+## Example Files
 
-1. **Generate tree-sitter outputs**:
-   ```bash
-   cd /path/to/semantic-code-search
-   mkdir -p tree-sitter-outputs
-   
-   for file in src/semantic_code_search/*.py; do
-       tree-sitter parse "$file" > "tree-sitter-outputs/$(basename $file).tree-sitter"
-   done
-   ```
-
-2. **Create input.json** (see `example.json` for template):
-   ```bash
-   # Edit example.json with correct absolute paths
-   cp example.json input.json
-   # Edit input.json with your paths
-   ```
-
-3. **Generate embeddings**:
-   ```bash
-   sem embed --input-json input.json
-   ```
-
-4. **Query**:
-   ```bash
-   sem query "command line argument parsing" --output-md --path-to-repo /path/to/semantic-code-search
-   ```
+- `Examples/example.sh` - Complete example script with comments showing the full workflow
+- `Examples/example.json` - Template JSON file showing the expected format
 
 ## Troubleshooting
 
