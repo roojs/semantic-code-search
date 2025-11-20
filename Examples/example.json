@@ -1,0 +1,34 @@
+{
+  "files": [
+    {
+      "path": "src/semantic_code_search/__init__.py",
+      "tree_sitter_file": "build/__init__.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/cli.py",
+      "tree_sitter_file": "build/cli.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/cluster.py",
+      "tree_sitter_file": "build/cluster.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/embed.py",
+      "tree_sitter_file": "build/embed.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/prompt.py",
+      "tree_sitter_file": "build/prompt.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/query.py",
+      "tree_sitter_file": "build/query.py.tree-sitter"
+    },
+    {
+      "path": "src/semantic_code_search/tree_parser.py",
+      "tree_sitter_file": "build/tree_parser.py.tree-sitter"
+    }
+  ],
+  "model_name": "krlvi/sentence-msmarco-bert-base-dot-v5-nlpl-code_search_net",
+  "batch_size": 32
+}
