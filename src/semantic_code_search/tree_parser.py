@@ -61,12 +61,13 @@ def _parse_node(s_expr: str, pos: int) -> Tuple[TreeNode, int]:
     while pos < len(s_expr) and s_expr[pos] in ' \t\n':
         pos += 1
     
-    # Parse position range [start_line:start_col-end_line:end_col] if present
+    # Parse position range [start_line, start_col] - [end_line, end_col] if present
+    # Tree-sitter CLI format: [0, 0] - [93, 0]
     start_line, start_col, end_line, end_col = 0, 0, 0, 0
     if pos < len(s_expr) and s_expr[pos] == '[':
         pos += 1
-        # Parse start_line:start_col-end_line:end_col
-        match = re.match(r'(\d+):(\d+)-(\d+):(\d+)', s_expr[pos:])
+        # Parse [start_line, start_col] - [end_line, end_col]
+        match = re.match(r'(\d+),\s*(\d+)\]\s*-\s*\[(\d+),\s*(\d+)', s_expr[pos:])
         if match:
             start_line = int(match.group(1))
             start_col = int(match.group(2))
@@ -84,14 +85,29 @@ def _parse_node(s_expr: str, pos: int) -> Tuple[TreeNode, int]:
     while pos < len(s_expr) and s_expr[pos] in ' \t\n':
         pos += 1
     
-    # Parse children
+    # Parse children (may have field names like "name:" before them)
     children = []
-    while pos < len(s_expr) and s_expr[pos] == '(':
-        child, pos = _parse_node(s_expr, pos)
-        children.append(child)
-        # Skip whitespace
-        while pos < len(s_expr) and s_expr[pos] in ' \t\n':
-            pos += 1
+    while pos < len(s_expr):
+        # Skip field names (e.g., "name:", "module_name:")
+        if s_expr[pos:pos+1].isalpha():
+            # Skip until colon or space
+            while pos < len(s_expr) and s_expr[pos] not in ': \t\n':
+                pos += 1
+            # Skip colon and whitespace
+            if pos < len(s_expr) and s_expr[pos] == ':':
+                pos += 1
+            while pos < len(s_expr) and s_expr[pos] in ' \t\n':
+                pos += 1
+        
+        # Parse child node if present
+        if pos < len(s_expr) and s_expr[pos] == '(':
+            child, pos = _parse_node(s_expr, pos)
+            children.append(child)
+            # Skip whitespace
+            while pos < len(s_expr) and s_expr[pos] in ' \t\n':
+                pos += 1
+        else:
+            break
     
     # Skip closing parenthesis
     if pos >= len(s_expr) or s_expr[pos] != ')':

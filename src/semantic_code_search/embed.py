@@ -29,9 +29,8 @@ def _get_functions_from_tree_sitter_files(json_input_path: str, relevant_node_ty
     with open(json_input_path, 'r') as f:
         config = json.load(f)
     
-    # Resolve paths relative to the JSON file's directory
-    json_dir = os.path.dirname(os.path.abspath(json_input_path))
-    
+    # Resolve paths relative to current working directory (repo root)
+    # Paths in JSON are assumed to be relative to where the command is run from
     files = config.get('files', [])
     functions = []
     
@@ -43,11 +42,11 @@ def _get_functions_from_tree_sitter_files(json_input_path: str, relevant_node_ty
         if not file_path or not tree_sitter_file:
             continue
         
-        # Resolve relative paths relative to JSON file directory
+        # Resolve relative paths relative to current working directory
         if not os.path.isabs(file_path):
-            file_path = os.path.join(json_dir, file_path)
+            file_path = os.path.abspath(file_path)
         if not os.path.isabs(tree_sitter_file):
-            tree_sitter_file = os.path.join(json_dir, tree_sitter_file)
+            tree_sitter_file = os.path.abspath(tree_sitter_file)
         
         # Normalize paths
         file_path = os.path.normpath(file_path)

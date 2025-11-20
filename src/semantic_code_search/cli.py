@@ -1,53 +1,50 @@
 import argparse
 import os
 import sys
-# from subprocess import run
+from subprocess import run
 
-# import torch
-# from sentence_transformers import SentenceTransformer
+import torch
+from sentence_transformers import SentenceTransformer
 
-# from semantic_code_search.embed import do_embed
-# from semantic_code_search.query import do_query
-# from semantic_code_search.cluster import do_cluster
+from semantic_code_search.embed import do_embed
+from semantic_code_search.query import do_query
+from semantic_code_search.cluster import do_cluster
 
 # Force CPU usage to avoid CUDA out of memory errors
-# torch.set_default_device('cpu')
+torch.set_default_device('cpu')
 
 
-# def git_root(path=None):
-#     path_params = []
-#     if path:
-#         path_params = ['-C', path]
-#     p = run(['git'] + path_params + ['rev-parse',
-#             '--show-toplevel'], capture_output=True)
-#     if p.returncode != 0:
-#         if not path:
-#             path = os.getcwd()
-#         print('{} is not a git repo. Run this in a git repository or specify a path using the -p flag'.format(path))
-#         sys.exit(1)
-#     return p.stdout.decode('utf-8').strip()
+def git_root(path=None):
+    path_params = []
+    if path:
+        path_params = ['-C', path]
+    p = run(['git'] + path_params + ['rev-parse',
+            '--show-toplevel'], capture_output=True)
+    if p.returncode != 0:
+        if not path:
+            path = os.getcwd()
+        print('{} is not a git repo. Run this in a git repository or specify a path using the -p flag'.format(path))
+        sys.exit(1)
+    return p.stdout.decode('utf-8').strip()
 
 
-# def embed_func(args):
-#     # model = SentenceTransformer(args.model_name_or_path, device='cpu')
-#     model = SentenceTransformer(args.model_name_or_path)
-#     do_embed(args, model)
+def embed_func(args):
+    model = SentenceTransformer(args.model_name_or_path, device='cpu')
+    do_embed(args, model)
 
 
-# def query_func(args):
-#     # model = SentenceTransformer(args.model_name_or_path, device='cpu')
-#     model = SentenceTransformer(args.model_name_or_path)
-#     if len(args.query_text) > 0:
-#         args.query_text = ' '.join(args.query_text)
-#     else:
-#         args.query_text = None
-#     do_query(args, model)
+def query_func(args):
+    model = SentenceTransformer(args.model_name_or_path, device='cpu')
+    if not args.query:
+        args.query_text = None
+    else:
+        args.query_text = args.query
+    do_query(args, model)
 
 
-# def cluster_func(args):
-#     # model = SentenceTransformer(args.model_name_or_path, device='cpu')
-#     model = SentenceTransformer(args.model_name_or_path)
-#     do_cluster(args, model)
+def cluster_func(args):
+    model = SentenceTransformer(args.model_name_or_path, device='cpu')
+    do_cluster(args, model)
 
 
 def main():
@@ -64,6 +61,8 @@ def main():
     parser.add_argument('-b', '--batch-size', metavar='BS',
                               type=int, default=32, help='Batch size for embeddings generation')
 
+    parser.add_argument('-q', '--query', metavar='QUERY', type=str, required=False,
+                        help='Query text for searching')
     parser.add_argument('-n', '--n-results', metavar='N', type=int,
                         required=False, default=5, help='Number of results to return')
     parser.add_argument('-c', '--cluster', action='store_true', default=False,
@@ -76,36 +75,16 @@ def main():
                         help='Ignore clusters smaller than this size. Use this if you want to find code that is similar and repeated many times (e.g. >5)')
     parser.add_argument('--cluster-ignore-identincal', action='store_true', default=True,
                         required=False, help='Ignore identical code / exact duplicates (where distance is 0)')
-    # parser.set_defaults(func=query_func)
-    parser.add_argument('query_text', nargs=argparse.REMAINDER)
+    parser.set_defaults(func=query_func)
 
     args = parser.parse_args()
-    
-    # Debug output
-    print("=" * 60)
-    print("Argument Parsing Results")
-    print("=" * 60)
-    print(f"sys.argv = {sys.argv}")
-    print()
-    print("Parsed arguments:")
-    print("-" * 60)
-    for key, value in vars(args).items():
-        print(f"  {key:30} = {value}")
-    print("-" * 60)
-    print()
-    
+
     if args.embed:
-        print("Would call: embed_func(args)")
-        # embed_func(args)
+        embed_func(args)
     elif args.cluster:
-        print("Would call: cluster_func(args)")
-        # cluster_func(args)
+        cluster_func(args)
     else:
-        print("Would call: query_func(args)")
-        if args.query_text:
-            query_text = ' '.join(args.query_text)
-            print(f"Query text would be: {query_text}")
-        # query_func(args)
+        query_func(args)
 
 
 if __name__ == '__main__':

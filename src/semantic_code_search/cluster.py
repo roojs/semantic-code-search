@@ -53,12 +53,12 @@ def _get_clusters(dataset, distance_threshold):
 
 
 def do_cluster(args, model):
-    if not os.path.isfile(args.path_to_repo + '/' + '.embeddings'):
-        print('Embeddings not found in {}. Generating embeddings now.'.format(
-            args.path_to_repo))
+    if not os.path.isfile(args.database):
+        print('Database not found at {}. Generating embeddings now.'.format(
+            args.database))
         do_embed(args, model)
 
-    with gzip.open(args.path_to_repo + '/' + '.embeddings', 'r') as f:
+    with gzip.open(args.database, 'r') as f:
         dataset = pickle.loads(f.read())
         if dataset.get('model_name') != args.model_name_or_path:
             print('Model name mismatch. Regenerating embeddings.')
