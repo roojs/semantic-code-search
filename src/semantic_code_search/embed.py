@@ -1,99 +1,125 @@
 import gzip
+import json
 import os
 import sys
 import pickle
-from textwrap import dedent
+from typing import List
 
 import numpy as np
-from tree_sitter import Tree
-from tree_sitter_languages import get_parser
 from tqdm import tqdm
 
+from semantic_code_search.tree_parser import extract_functions_from_tree
 
-def _supported_file_extensions():
-    return {
-        '.rb': 'ruby',
-        '.go': 'go',
-        '.rs': 'rust',
-        '.java': 'java',
-        '.js': 'javascript',
-        '.ts': 'typescript',
-        '.py': 'python',
-        '.c': 'c',
-        '.h': 'c',
-        '.cpp': 'cpp',
-        '.hpp': 'cpp',
-        '.kt': 'kotlin',
-        '.kts': 'kotlin',
-        '.ktm': 'kotlin',
-        '.php': 'php',
+
+def _get_functions_from_tree_sitter_files(json_input_path: str, relevant_node_types: List[str]):
+    """
+    Read functions from tree-sitter output files specified in JSON input.
+    
+    JSON format:
+    {
+        "files": [
+            {"path": "/path/to/file.py", "tree_sitter_file": "/path/to/file.py.tree-sitter"},
+            ...
+        ],
+        "repo_root": "/repo/root",
+        "model_name": "...",
+        "batch_size": 32
     }
-
-
-def _traverse_tree(tree: Tree):
-    cursor = tree.walk()
-    reached_root = False
-    while reached_root is False:
-        yield cursor.node
-        if cursor.goto_first_child():
-            continue
-        if cursor.goto_next_sibling():
-            continue
-        retracing = True
-        while retracing:
-            if not cursor.goto_parent():
-                retracing = False
-                reached_root = True
-            if cursor.goto_next_sibling():
-                retracing = False
-
-
-def _extract_functions(nodes, fp, file_content, relevant_node_types):
-    out = []
-    for n in nodes:
-        if n.type in relevant_node_types:
-            node_text = dedent('\n'.join(file_content.split('\n')[
-                               n.start_point[0]:n.end_point[0]+1]))
-            out.append(
-                {'file': fp, 'line': n.start_point[0], 'text': node_text})
-    return out
-
-
-def _get_repo_functions(root, supported_file_extensions, relevant_node_types):
+    """
+    with open(json_input_path, 'r') as f:
+        config = json.load(f)
+    
+    # Resolve paths relative to the JSON file's directory
+    json_dir = os.path.dirname(os.path.abspath(json_input_path))
+    
+    files = config.get('files', [])
     functions = []
-    print('Extracting functions from {}'.format(root))
-    for fp in tqdm([root + '/' + f for f in os.popen('git -C {} ls-files'.format(root)).read().split('\n')]):
-        if not os.path.isfile(fp):
+    
+    print('Extracting functions from {} files'.format(len(files)))
+    for file_info in tqdm(files):
+        file_path = file_info.get('path')
+        tree_sitter_file = file_info.get('tree_sitter_file')
+        
+        if not file_path or not tree_sitter_file:
             continue
-        with open(fp, 'r') as f:
-            lang = supported_file_extensions.get(fp[fp.rfind('.'):])
-            if lang:
-                parser = get_parser(lang)
+        
+        # Resolve relative paths relative to JSON file directory
+        if not os.path.isabs(file_path):
+            file_path = os.path.join(json_dir, file_path)
+        if not os.path.isabs(tree_sitter_file):
+            tree_sitter_file = os.path.join(json_dir, tree_sitter_file)
+        
+        # Normalize paths
+        file_path = os.path.normpath(file_path)
+        tree_sitter_file = os.path.normpath(tree_sitter_file)
+        
+        if not os.path.isfile(file_path):
+            print('Warning: Source file not found: {}'.format(file_path), file=sys.stderr)
+            continue
+        
+        if not os.path.isfile(tree_sitter_file):
+            print('Warning: Tree-sitter output file not found: {}'.format(tree_sitter_file), file=sys.stderr)
+            continue
+        
+        # Read source file content
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 file_content = f.read()
-                tree = parser.parse(bytes(file_content, 'utf8'))
-                all_nodes = list(_traverse_tree(tree.root_node))
-                functions.extend(_extract_functions(
-                    all_nodes, fp, file_content, relevant_node_types))
+        except Exception as e:
+            print('Warning: Failed to read {}: {}'.format(file_path, e), file=sys.stderr)
+            continue
+        
+        # Read tree-sitter output
+        try:
+            with open(tree_sitter_file, 'r', encoding='utf-8') as f:
+                tree_sitter_output = f.read()
+        except Exception as e:
+            print('Warning: Failed to read {}: {}'.format(tree_sitter_file, e), file=sys.stderr)
+            continue
+        
+        # Extract functions using tree parser
+        file_functions = extract_functions_from_tree(
+            tree_sitter_output, file_path, file_content, relevant_node_types
+        )
+        functions.extend(file_functions)
+    
     return functions
 
 
 def do_embed(args, model):
     nodes_to_extract = ['function_definition', 'method_definition',
                         'function_declaration', 'method_declaration']
-    functions = _get_repo_functions(
-        args.path_to_repo, _supported_file_extensions(), nodes_to_extract)
+    
+    # Require input_json for embedding
+    if not hasattr(args, 'input_json') or not args.input_json:
+        print('Error: --input-json is required for embedding', file=sys.stderr)
+        sys.exit(1)
+    
+    functions = _get_functions_from_tree_sitter_files(args.input_json, nodes_to_extract)
+    
+    # Get config from JSON
+    with open(args.input_json, 'r') as f:
+        config = json.load(f)
+    
+    # Override model_name and batch_size from JSON if present
+    if 'model_name' in config:
+        args.model_name_or_path = config['model_name']
+    if 'batch_size' in config:
+        args.batch_size = config['batch_size']
 
     if not functions:
-        print('No supported languages found in {}. Exiting'.format(args.path_to_repo))
+        print('No functions found. Exiting', file=sys.stderr)
         sys.exit(1)
 
-    print('Embedding {} functions in {} batches. This is done once and cached in .embeddings'.format(
+    print('Embedding {} functions in {} batches. This is done once and cached in database'.format(
         len(functions), int(np.ceil(len(functions)/args.batch_size))))
     corpus_embeddings = model.encode(
         [f['text'] for f in functions], convert_to_tensor=True, show_progress_bar=True, batch_size=args.batch_size)
 
     dataset = {'functions': functions,
                'embeddings': corpus_embeddings, 'model_name': args.model_name_or_path}
-    with gzip.open(args.path_to_repo + '/' + '.embeddings', 'w') as f:
+    
+    # Use database path from args (required)
+    with gzip.open(args.database, 'w') as f:
         f.write(pickle.dumps(dataset))
     return dataset

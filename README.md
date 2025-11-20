@@ -36,16 +36,72 @@ This guide explains how to use `semantic-code-search` with the tree-sitter comma
 
 ## Prerequisites
 
-1. **Install tree-sitter CLI**:
+1. **Install PyTorch** (if you don't have a GPU capable of running PyTorch):
    ```bash
-    sudo apt install tree-sitter-cli
+   pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
    ```
 
-2. **Install semantic-code-search**:
+2. **Install tree-sitter CLI**:
    ```bash
-   # Install in development mode (editable install)
-   pip3 install -e .
+   npm install tree-sitter-cli
    ```
+
+3. **Install tree-sitter language parsers**:
+   
+   Set up tree-sitter to use local language parsers:
+   
+   ```bash
+   # Step 1: Initialize tree-sitter config
+   npx tree-sitter init-config
+   
+   # Step 2: Create directory for language parsers
+   mkdir -p ~/.local/share/tree-sitter
+   
+   # Step 3: Clone language parsers into that directory
+   cd ~/.local/share/tree-sitter
+   git clone https://github.com/tree-sitter/tree-sitter-python
+   
+   # Step 4: Build each parser
+   cd tree-sitter-python
+   npx tree-sitter generate
+   cd ..
+   
+   # Repeat for other languages you need
+   # git clone https://github.com/tree-sitter/tree-sitter-javascript
+   # cd tree-sitter-javascript
+   # npx tree-sitter generate
+   # cd ..
+   ```
+   
+   **Important**: Modify your local tree-sitter config (created by `init-config`) to point to `~/.local/share/tree-sitter` instead of individual language subdirectories.
+   
+   The config file (typically `~/.config/tree-sitter/config.json`) should list the directory containing your language parsers. For example:
+   
+   ```json
+   {
+     "parser-directories": [
+       "/home/alan/.local/share/tree-sitter", 
+     ]
+   }
+   ```
+   
+   This tells tree-sitter where to find the language parsers you've cloned and built. After setting this up, you can use `npx tree-sitter parse` from any directory.
+   
+   See the [List of parsers](https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers) for available language parsers and their repository URLs.
+   
+   Once set up, you can use `npx tree-sitter parse` from any directory to parse files in supported languages.
+
+## Installation
+
+Clone the repository and install semantic-code-search:
+
+```bash
+git clone https://github.com/roojais/semantic-code-search
+cd semantic-code-search
+
+# Install in development mode (editable install)
+pip3 install -e .
+```
 
 ## Quick Start
 
@@ -76,18 +132,17 @@ Create a `build/` directory and generate tree-sitter parse outputs for each sour
 mkdir -p build
 
 # Example: Parse a Python file
-tree-sitter parse src/semantic_code_search/cli.py > build/cli.py.tree-sitter
+npx tree-sitter parse src/semantic_code_search/cli.py > build/cli.py.tree-sitter
 
 # Parse multiple files
 for file in src/semantic_code_search/*.py; do
-    tree-sitter parse "$file" > "build/$(basename $file).tree-sitter"
+    npx tree-sitter parse "$file" > "build/$(basename $file).tree-sitter"
 done
 ```
 
-**Note**: Make sure tree-sitter has the language grammar installed. For Python, you may need:
-```bash
-tree-sitter build
-```
+**Note**: Make sure you have set up tree-sitter language parsers following the prerequisites above. Once configured, you can use `tree-sitter parse` from any directory to parse files in supported languages.
+
+See the [List of parsers](https://github.com/tree-sitter/tree-sitter/wiki/List-of-parsers) for available language parsers.
 
 ### Step 2: Create JSON input file
 
@@ -173,7 +228,7 @@ def check_auth(...):
 ## Troubleshooting
 
 - **"Tree-sitter output file not found"**: Make sure you've generated the `.tree-sitter` files and the paths in your JSON are correct (relative paths are resolved relative to the JSON file's directory)
-- **"No functions found"**: Check that tree-sitter is parsing your files correctly. Try running `tree-sitter parse` manually on a file
+- **"No functions found"**: Check that tree-sitter is parsing your files correctly. Try running `npx tree-sitter parse` manually on a file
 - **"Database not found"**: Make sure you've run `sem embed` first with the `--database` argument, or check that the database path is correct
 - **"Error: --input-json is required for embedding"**: You must provide the `--input-json` argument when generating embeddings
 - **"Error: --database is required"**: The `--database` argument is required for all operations (embed, query, cluster)

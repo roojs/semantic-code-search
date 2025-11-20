@@ -8,7 +8,7 @@
 # 4. Query the codebase
 #
 # Prerequisites:
-# - tree-sitter CLI installed (via apt, cargo, or npm)
+# - tree-sitter CLI installed (npm install tree-sitter-cli)
 # - semantic-code-search installed (pip3 install -e .)
 # - This script should be run from the repository root
 
@@ -25,13 +25,13 @@ mkdir -p "${BUILD_DIR}"
 
 # Generate tree-sitter parse outputs for Python files
 echo "Parsing Python files with tree-sitter..."
-tree-sitter parse src/semantic_code_search/__init__.py > "${BUILD_DIR}/__init__.py.tree-sitter" || echo "Warning: Failed to parse __init__.py"
-tree-sitter parse src/semantic_code_search/cli.py > "${BUILD_DIR}/cli.py.tree-sitter" || echo "Warning: Failed to parse cli.py"
-tree-sitter parse src/semantic_code_search/cluster.py > "${BUILD_DIR}/cluster.py.tree-sitter" || echo "Warning: Failed to parse cluster.py"
-tree-sitter parse src/semantic_code_search/embed.py > "${BUILD_DIR}/embed.py.tree-sitter" || echo "Warning: Failed to parse embed.py"
-tree-sitter parse src/semantic_code_search/prompt.py > "${BUILD_DIR}/prompt.py.tree-sitter" || echo "Warning: Failed to parse prompt.py"
-tree-sitter parse src/semantic_code_search/query.py > "${BUILD_DIR}/query.py.tree-sitter" || echo "Warning: Failed to parse query.py"
-tree-sitter parse src/semantic_code_search/tree_parser.py > "${BUILD_DIR}/tree_parser.py.tree-sitter" || echo "Warning: Failed to parse tree_parser.py"
+npx tree-sitter parse src/semantic_code_search/__init__.py > "${BUILD_DIR}/__init__.py.tree-sitter" || echo "Warning: Failed to parse __init__.py"
+npx tree-sitter parse src/semantic_code_search/cli.py > "${BUILD_DIR}/cli.py.tree-sitter" || echo "Warning: Failed to parse cli.py"
+npx tree-sitter parse src/semantic_code_search/cluster.py > "${BUILD_DIR}/cluster.py.tree-sitter" || echo "Warning: Failed to parse cluster.py"
+npx tree-sitter parse src/semantic_code_search/embed.py > "${BUILD_DIR}/embed.py.tree-sitter" || echo "Warning: Failed to parse embed.py"
+npx tree-sitter parse src/semantic_code_search/prompt.py > "${BUILD_DIR}/prompt.py.tree-sitter" || echo "Warning: Failed to parse prompt.py"
+npx tree-sitter parse src/semantic_code_search/query.py > "${BUILD_DIR}/query.py.tree-sitter" || echo "Warning: Failed to parse query.py"
+npx tree-sitter parse src/semantic_code_search/tree_parser.py > "${BUILD_DIR}/tree_parser.py.tree-sitter" || echo "Warning: Failed to parse tree_parser.py"
 
 echo ""
 echo "=== Step 2: Using JSON input file ==="
@@ -39,15 +39,15 @@ echo "Using ${INPUT_JSON}"
 echo ""
 
 echo "=== Step 3: Generate embeddings ==="
-echo "Running: sem embed --input-json ${INPUT_JSON} --database ${DATABASE}"
-sem embed --input-json "${INPUT_JSON}" --database "${DATABASE}"
+echo "Running: sem --embed --input-json ${INPUT_JSON} --database ${DATABASE}"
+sem --embed --input-json "${INPUT_JSON}" --database "${DATABASE}"
 
 echo ""
 echo "=== Step 4: Query example ==="
 echo "Example query: 'command line argument parsing'"
-echo "Running: sem query 'command line argument parsing' --database ${DATABASE}"
+echo "Running: sem 'command line argument parsing' --database ${DATABASE}"
 echo ""
-sem query "command line argument parsing" --database "${DATABASE}"
+sem "command line argument parsing" --database "${DATABASE}"
 
 echo ""
 echo "=== Done! ==="
