@@ -30,8 +30,32 @@ class ResultEntry:
     text: str
 
 
+def _read_function_text(file_path: str, line: int) -> str:
+    """Read function text from source file at given line."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            file_lines = f.readlines()
+        
+        # Read a reasonable amount of context around the function
+        # Start from the function line and read forward until we find the end
+        start_line = max(0, line)
+        end_line = min(len(file_lines), start_line + 50)  # Read up to 50 lines
+        
+        return ''.join(file_lines[start_line:end_line]).rstrip()
+    except Exception:
+        return f"# Could not read file: {file_path}"
+
+
 def _format_input(results):
-    return [ResultEntry(score, entry.get('file'), entry.get('line'), entry.get('text')) for (score, entry) in results]
+    """Format search results, reading text from source files."""
+    formatted_results = []
+    for score, entry in results:
+        file_path = entry.get('file')
+        line = entry.get('line')
+        # Read text from source file
+        text = _read_function_text(file_path, line)
+        formatted_results.append(ResultEntry(score, file_path, line, text))
+    return formatted_results
 
 
 def _syntax_highlighting(text, file):

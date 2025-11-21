@@ -18,7 +18,7 @@ set -e  # Exit on error
 REPO_ROOT="$(pwd)"
 BUILD_DIR="${REPO_ROOT}/build"
 INPUT_JSON="${REPO_ROOT}/Examples/example.json"
-DATABASE="${BUILD_DIR}/semantic.db"
+# Note: Database is automatically stored at ~/.local/share/semantic_code_search/
 
 echo "=== Step 1: Generate tree-sitter output files ==="
 mkdir -p "${BUILD_DIR}"
@@ -39,18 +39,22 @@ echo "Using ${INPUT_JSON}"
 echo ""
 
 echo "=== Step 3: Generate embeddings ==="
-echo "Running: sem --embed --input-json ${INPUT_JSON} --database ${DATABASE}"
-sem --embed --input-json "${INPUT_JSON}" --database "${DATABASE}"
+echo "Running: sem --embed --input-json ${INPUT_JSON}"
+echo "Note: Embeddings are stored at ~/.local/share/semantic_code_search/"
+sem --embed --input-json "${INPUT_JSON}"
 
 echo ""
 echo "=== Step 4: Query example ==="
 echo "Example query: 'command line argument parsing'"
-echo "Running: sem --database ${DATABASE} --query 'command line argument parsing'"
+echo "Running: sem --query 'command line argument parsing'"
 echo ""
-sem --database "${DATABASE}" --query "command line argument parsing"
+sem --query "command line argument parsing"
 
 echo ""
 echo "=== Done! ==="
 echo "You can now query your codebase with:"
-echo "  sem --database ${DATABASE} --query 'your query here'"
+echo "  sem --query 'your query here'"
+echo ""
+echo "To restrict search to specific files, use --filter-json:"
+echo "  sem --query 'your query' --filter-json Examples/example.json"
 

@@ -1,33 +1,181 @@
-import gzip
+import json
 import os
-import pickle
 import sys
 
+import faiss
+import numpy as np
 import torch
-from sentence_transformers import util
 
-from semantic_code_search.embed import do_embed
+from semantic_code_search.faiss_storage import (
+    load_index, load_metadata, load_file_metadata, get_filtered_vector_ids,
+    normalize_path, get_all_functions
+)
 
 
-def _search(query_embedding, corpus_embeddings, functions, k=5):
-    cos_scores = util.cos_sim(query_embedding, corpus_embeddings)[0]
-    top_results = torch.topk(cos_scores, k=min(k, len(cos_scores)), sorted=True)
-    out = []
-    for score, idx in zip(top_results[0], top_results[1]):
-        out.append((score, functions[idx]))
-    return out
+def _load_filter_files(filter_json_path: str) -> list:
+    """Load and normalize file paths from filter JSON (same format as embed JSON)."""
+    with open(filter_json_path, 'r') as f:
+        config = json.load(f)
+    
+    files = config.get('files', [])
+    normalized_files = []
+    
+    for file_info in files:
+        file_path = file_info.get('path')
+        if not file_path:
+            continue
+        
+        # Normalize path (same as embed.py)
+        if not os.path.isabs(file_path):
+            file_path = os.path.abspath(file_path)
+        normalized_files.append(normalize_path(file_path))
+    
+    return normalized_files
+
+
+def _search_faiss(query_embedding, index: faiss.Index, filter_files: list = None, 
+                  filter_extensions: list = None, k=5):
+    """Search FAISS index with optional file and extension filtering."""
+    # Normalize query embedding
+    query_np = query_embedding.cpu().numpy().astype('float32')
+    query_np = query_np.reshape(1, -1)  # Ensure 2D
+    faiss.normalize_L2(query_np)
+    
+    # Get all functions and create a mapping from vector_id to function
+    all_functions = get_all_functions()
+    if not all_functions:
+        return []
+    
+    vector_id_to_function = {f['vector_id']: f for f in all_functions}
+    
+    # Normalize extensions (remove leading dots, make lowercase)
+    normalized_exts = None
+    if filter_extensions:
+        normalized_exts = {ext.lstrip('.').lower() for ext in filter_extensions}
+    
+    # Build filter set if files are specified
+    filter_set = set(filter_files) if filter_files else None
+    
+    # Build combined filter (files + extensions)
+    if filter_set or normalized_exts:
+        filter_vector_ids = set()
+        for f in all_functions:
+            # Check file filter
+            if filter_set and f['file'] not in filter_set:
+                continue
+            
+            # Check extension filter
+            if normalized_exts:
+                file_ext = os.path.splitext(f['file'])[1].lstrip('.').lower()
+                if file_ext not in normalized_exts:
+                    continue
+            
+            filter_vector_ids.add(f['vector_id'])
+        
+        if not filter_vector_ids:
+            return []
+    else:
+        filter_vector_ids = None
+    
+    # Perform search - search all vectors to find valid ones
+    # This is necessary because removed vectors may still score higher than valid ones
+    # We'll filter to only valid vector IDs and then take top k
+    
+    # For IndexIDMap2, search the base index directly to avoid bug with removed vectors
+    # Then map results through id_map
+    if hasattr(index, 'index') and hasattr(index, 'id_map'):
+        # Search base index directly (this works correctly after removals)
+        base_index = index.index
+        search_k = base_index.ntotal
+        distances, indices = base_index.search(query_np, search_k)
+    else:
+        # Fallback to normal search
+        search_k = index.ntotal
+        distances, indices = index.search(query_np, search_k)
+    
+    # Map results back to functions, filtering out invalid vector IDs
+    results = []
+    
+    for dist, idx in zip(distances[0], indices[0]):
+        # Filter out invalid indices immediately
+        idx_int = int(idx)
+        if idx_int < 0:
+            continue
+        
+        # For IndexIDMap2, idx is the position in the base index, need to get the actual vector ID
+        try:
+            if hasattr(index, 'id_map') and hasattr(index.id_map, 'at'):
+                # Check bounds - idx should be < ntotal
+                if idx_int >= index.ntotal:
+                    continue
+                actual_id = int(index.id_map.at(idx_int))
+            else:
+                # Fallback: assume sequential IDs
+                if idx_int >= index.ntotal:
+                    continue
+                actual_id = idx_int
+        except (AttributeError, IndexError, ValueError, RuntimeError) as e:
+            # RuntimeError can occur if id_map access is out of bounds
+            # Skip this result and continue
+            continue
+        
+        # Skip if vector ID doesn't exist in our metadata (removed vectors)
+        if actual_id not in vector_id_to_function:
+            continue
+        
+        # Apply combined filter if specified
+        if filter_vector_ids is not None and actual_id not in filter_vector_ids:
+            continue
+        
+        func = vector_id_to_function[actual_id]
+        score = float(dist)
+        
+        results.append((score, {
+            'file': func['file'],
+            'line': func['line']
+        }))
+        
+        # Stop once we have enough results
+        if len(results) >= k:
+            break
+    
+    # Sort by score descending (should already be sorted, but ensure it)
+    results.sort(key=lambda x: x[0], reverse=True)
+    return results[:k]
 
 
 def _query_embeddings(model, args):
-    with gzip.open(args.database, 'r') as f:
-        dataset = pickle.loads(f.read())
-        if dataset.get('model_name') != args.model_name_or_path:
-            print('Model name mismatch. Regenerating embeddings.', file=sys.stderr)
-            dataset = do_embed(args, model)
-        query_embedding = model.encode(args.query_text, convert_to_tensor=True)
-        results = _search(query_embedding, dataset.get(
-            'embeddings'), dataset.get('functions'), k=args.n_results)
-        return results
+    """Query FAISS index with optional file and language filtering."""
+    # Load index and metadata
+    index = load_index()
+    if index is None:
+        print('Error: No index found. Please generate embeddings first.', file=sys.stderr)
+        sys.exit(1)
+    
+    metadata = load_metadata()
+    if metadata.get('model_name') != args.model_name_or_path:
+        print('Error: Model name mismatch. Expected {}, found {}. Please regenerate embeddings.'.format(
+            args.model_name_or_path, metadata.get('model_name')), file=sys.stderr)
+        sys.exit(1)
+    
+    # Load filter files if specified
+    filter_files = None
+    if hasattr(args, 'filter_json') and args.filter_json:
+        filter_files = _load_filter_files(args.filter_json)
+        print('Filtering search to {} files'.format(len(filter_files)))
+    
+    # Parse language extensions if specified
+    filter_extensions = None
+    if hasattr(args, 'lang') and args.lang:
+        filter_extensions = [ext.strip() for ext in args.lang.split(',')]
+        print('Filtering search to languages: {}'.format(', '.join(filter_extensions)))
+    
+    # Generate query embedding
+    query_embedding = model.encode(args.query_text, convert_to_tensor=True)
+    
+    # Search
+    results = _search_faiss(query_embedding, index, filter_files, filter_extensions, k=args.n_results)
+    return results
 
 
 def query_to_markdown(query_text: str, model, args) -> str:
@@ -39,17 +187,33 @@ def query_to_markdown(query_text: str, model, args) -> str:
     if not query_text:
         return ""
     
-    if not os.path.isfile(args.database):
+    # Load index and metadata
+    index = load_index()
+    if index is None:
         return "# Error\n\nDatabase not found. Please generate embeddings first.\n"
     
-    with gzip.open(args.database, 'r') as f:
-        dataset = pickle.loads(f.read())
-        if dataset.get('model_name') != args.model_name_or_path:
-            return "# Error\n\nModel name mismatch. Please regenerate embeddings.\n"
+    metadata = load_metadata()
+    if metadata.get('model_name') != args.model_name_or_path:
+        return "# Error\n\nModel name mismatch. Please regenerate embeddings.\n"
     
+    # Load filter files if specified
+    filter_files = None
+    if hasattr(args, 'filter_json') and args.filter_json:
+        try:
+            filter_files = _load_filter_files(args.filter_json)
+        except Exception as e:
+            return f"# Error\n\nFailed to load filter JSON: {e}\n"
+    
+    # Parse language extensions if specified
+    filter_extensions = None
+    if hasattr(args, 'lang') and args.lang:
+        filter_extensions = [ext.strip() for ext in args.lang.split(',')]
+    
+    # Generate query embedding
     query_embedding = model.encode(query_text, convert_to_tensor=True)
-    results = _search(query_embedding, dataset.get('embeddings'), 
-                     dataset.get('functions'), k=args.n_results)
+    
+    # Search
+    results = _search_faiss(query_embedding, index, filter_files, filter_extensions, k=args.n_results)
     
     # Format as markdown
     markdown_lines = ["# Search Results\n"]
@@ -105,10 +269,9 @@ def query_to_markdown(query_text: str, model, args) -> str:
             end_line_1indexed = end_line
             
         except Exception as e:
-            # Fallback to stored text if file can't be read
-            context_text = func_info['text']
-            start_line_1indexed = match_line_1indexed
-            end_line_1indexed = match_line_1indexed
+            # If file can't be read, skip this result
+            print(f'Warning: Could not read file {file_path}: {e}', file=sys.stderr)
+            continue
         
         markdown_lines.append(f"## Result {i} (score: {score:.3f})")
         markdown_lines.append(f"**File:** `{file_path}:{match_line_1indexed}`\n")

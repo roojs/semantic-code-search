@@ -50,8 +50,6 @@ def cluster_func(args):
 def main():
     parser = argparse.ArgumentParser(
         prog='sem', description='Search your codebase using natural language')
-    parser.add_argument('-D', '--database', metavar='PATH', type=str, required=True,
-                        help='Path to the embeddings database file (gzipped pickle file)')
     parser.add_argument('-m', '--model-name-or-path', metavar='MODEL', default='krlvi/sentence-msmarco-bert-base-dot-v5-nlpl-code_search_net',
                         type=str, required=False, help='Name or path of the model to use')
     parser.add_argument('-d', '--embed', action='store_true', default=False,
@@ -63,6 +61,8 @@ def main():
 
     parser.add_argument('-q', '--query', metavar='QUERY', type=str, required=False,
                         help='Query text for searching')
+    parser.add_argument('--lang', '--language', metavar='EXTENSIONS', type=str, required=False,
+                        help='Comma-separated file extensions to filter by (e.g., "py,js" or ".py,.js"). Default: all languages')
     parser.add_argument('-n', '--n-results', metavar='N', type=int,
                         required=False, default=5, help='Number of results to return')
     parser.add_argument('-c', '--cluster', action='store_true', default=False,
